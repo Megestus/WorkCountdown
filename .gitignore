@@ -1,0 +1,38 @@
+
+# 编译输出目录（自动生成，无需上传）
+bin/
+obj/
+
+# 发布目录（发布时生成的exe等，本地保留即可）
+publish/
+
+# 日志文件（记录的打卡数据，属于用户本地数据）
+start_time_log.json
+
+# 图标缓存和临时文件（系统自动生成）
+*.ico.cache
+Thumbs.db
+.DS_Store
+
+# 调试相关文件（包含调试信息，无需上传）
+*.pdb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+#  Rider/Resharper 等IDE生成的配置文件（仅本地IDE使用）
+.idea/
+*.sln.iml
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Visual Studio 缓存文件
+.vs/
+*.vcxproj.filters
+*.vcxproj.user
+
+# 操作系统临时文件
+~$*
+    

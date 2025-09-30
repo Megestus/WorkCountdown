@@ -206,7 +206,7 @@ namespace WorkCountdown
         private void OpenLogForm(object sender, EventArgs e)
         {
             List<WorkRecord> logs = LoadLogs();
-            LogForm logForm = new LogForm(logs);
+            LogForm logForm = new LogForm(logs, SAVE_FILE);
             logForm.ShowDialog();
         }
 

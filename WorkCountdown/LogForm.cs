@@ -2,8 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
-using Newtonsoft.Json;
-
+// using Newtonsoft.Json;
+using System.Text.Json;
 namespace WorkCountdown
 {
     /// <summary>
@@ -86,6 +86,8 @@ namespace WorkCountdown
         /// </summary>
         private void InitializeComponent()
         {
+            this.SuspendLayout();
+
             // 初始化DataGridView
             dataGridViewLogs = new DataGridView();
             ((System.ComponentModel.ISupportInitialize)(dataGridViewLogs)).BeginInit();
@@ -166,6 +168,7 @@ namespace WorkCountdown
 
             ((System.ComponentModel.ISupportInitialize)(dataGridViewLogs)).EndInit();
             this.ResumeLayout(false);
+            this.PerformLayout();
         }
 
         /// <summary>
@@ -261,7 +264,7 @@ namespace WorkCountdown
             try
             {
                 // 将修改后的日志序列化并写入文件
-                string json = JsonConvert.SerializeObject(logs, Newtonsoft.Json.Formatting.Indented);
+                string json = JsonSerializer.Serialize(logs, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(logFilePath, json);
                 MessageBox.Show("日志修改已成功保存到文件", "保存成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }

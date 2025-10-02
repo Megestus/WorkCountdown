@@ -62,6 +62,7 @@
             lblCountdown.Size = new Size(250, 28);
             lblCountdown.TabIndex = 3;
             lblCountdown.TextAlign = ContentAlignment.MiddleCenter;
+
             // 
             // btnNewDay
             // 
@@ -72,7 +73,6 @@
             btnNewDay.TabIndex = 4;
             btnNewDay.Text = "新的牛马一天";
             btnNewDay.UseVisualStyleBackColor = true;
-            btnNewDay.Click += btnNewDay_Click;
             // 
             // btnClockOff
             // 
@@ -100,7 +100,7 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 17F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(274, 267);
+            ClientSize = new Size(274, 280);
             Controls.Add(btnViewLogs);
             Controls.Add(btnClockOff);
             Controls.Add(btnNewDay);

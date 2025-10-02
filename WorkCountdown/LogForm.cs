@@ -2,18 +2,27 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
-// using Newtonsoft.Json;
 using System.Text.Json;
+using System.Drawing;
+using System.Runtime.InteropServices;
+
 namespace WorkCountdown
 {
     /// <summary>
-    /// 打卡日志记录窗体 - 用于查看和编辑工作记录
+    /// 打卡日志记录窗体 - 用于查看和编辑工作记录（支持黑夜模式）
     /// </summary>
     public partial class LogForm : Form
     {
         // 数据成员
         private List<WorkRecord> logs;           // 工作记录列表
         private string logFilePath;              // 日志文件保存路径
+        private bool isDarkMode;                 // 是否启用黑夜模式
+
+        // Windows API
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         // UI控件成员
         private DataGridView dataGridViewLogs = new DataGridView();
@@ -24,61 +33,111 @@ namespace WorkCountdown
         private Button btnClose = new Button();
         private Button btnSave = new Button();
 
+        // 颜色定义
+        private readonly Color LightBackColor = SystemColors.Control;
+        private readonly Color LightForeColor = SystemColors.ControlText;
+        private readonly Color LightButtonBackColor = SystemColors.ControlLight;
+        private readonly Color DarkBackColor = Color.FromArgb(45, 45, 48);
+        private readonly Color DarkForeColor = Color.White;
+        private readonly Color DarkButtonBackColor = Color.FromArgb(63, 63, 70);
+        private readonly Color DarkGridBackColor = Color.FromArgb(37, 37, 38);
+        private readonly Color DarkGridForeColor = Color.White;
+        private readonly Color DarkGridHeaderBackColor = Color.FromArgb(51, 51, 51);
+        private readonly Color DarkGridSelectionBackColor = Color.FromArgb(75, 75, 80);
+        private readonly Color DarkGridSelectionForeColor = Color.White;
+
+        /// <summary>
+        /// 设置窗口黑暗模式
+        /// </summary>
+        private void SetWindowDarkMode(IntPtr handle, bool darkMode)
+        {
+            try
+            {
+                int darkModeValue = darkMode ? 1 : 0;
+                DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkModeValue, sizeof(int));
+            }
+            catch
+            {
+                // 如果 API 调用失败，忽略错误
+            }
+        }
+
         /// <summary>
         /// 构造函数 - 初始化日志窗体
         /// </summary>
         /// <param name="workLogs">工作记录数据</param>
         /// <param name="filePath">日志文件路径</param>
-        public LogForm(List<WorkRecord> workLogs, string filePath)
+        /// <param name="darkMode">是否启用黑夜模式</param>
+        public LogForm(List<WorkRecord> workLogs, string filePath, bool darkMode = false)
         {
-            // 手动调用初始化方法（替代设计器生成的调用）
-            InitializeComponent();
             logs = workLogs ?? new List<WorkRecord>();
-            logFilePath = filePath; // 保存文件路径
-            LoadLogData(); // 加载数据到界面
+            logFilePath = filePath;
+            isDarkMode = darkMode;
+            InitializeComponent();
+            LoadLogData();
+
+            // 确保窗口句柄已创建后再应用主题
+            this.HandleCreated += (s, e) => {
+                ApplyTheme();
+            };
         }
 
         /// <summary>
-        /// 加载日志数据到DataGridView并计算工作时长
+        /// 应用主题
         /// </summary>
-        private void LoadLogData()
+        private void ApplyTheme()
         {
-            dataGridViewLogs.Rows.Clear();
+            Color backColor, foreColor, buttonBackColor, gridBackColor, gridForeColor, gridHeaderBackColor, gridSelectionBackColor, gridSelectionForeColor;
 
-            // 按日期降序排序（最新的记录在前面）
-            logs.Sort((x, y) => DateTime.Compare(DateTime.Parse(y.Date), DateTime.Parse(x.Date)));
-
-            foreach (var record in logs)
+            if (isDarkMode)
             {
-                string workDuration = "未记录完整";
+                backColor = DarkBackColor;
+                foreColor = DarkForeColor;
+                buttonBackColor = DarkButtonBackColor;
+                gridBackColor = DarkGridBackColor;
+                gridForeColor = DarkGridForeColor;
+                gridHeaderBackColor = DarkGridHeaderBackColor;
+                gridSelectionBackColor = DarkGridSelectionBackColor;
+                gridSelectionForeColor = DarkGridSelectionForeColor;
 
-                // 只有同时有上班和下班时间时才计算工作时长
-                if (!string.IsNullOrEmpty(record.StartTime) && !string.IsNullOrEmpty(record.OffworkTime))
-                {
-                    if (DateTime.TryParse(record.StartTime, out DateTime start) &&
-                        DateTime.TryParse(record.OffworkTime, out DateTime end))
-                    {
-                        TimeSpan duration = end - start;
-
-                        // 扣除1小时午休时间（如果总时长超过1小时）
-                        if (duration.TotalHours > 1)
-                        {
-                            duration = duration - TimeSpan.FromHours(1);
-                        }
-
-                        // 格式化为 HH:mm:ss 显示
-                        workDuration = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
-                    }
-                }
-
-                // 添加行到DataGridView
-                dataGridViewLogs.Rows.Add(
-                    record.Date,
-                    record.StartTime,
-                    record.OffworkTime,
-                    workDuration
-                );
+                // 设置窗口黑暗模式
+                SetWindowDarkMode(this.Handle, true);
             }
+            else
+            {
+                backColor = LightBackColor;
+                foreColor = LightForeColor;
+                buttonBackColor = LightButtonBackColor;
+                gridBackColor = SystemColors.Window;
+                gridForeColor = SystemColors.ControlText;
+                gridHeaderBackColor = SystemColors.Control;
+                gridSelectionBackColor = SystemColors.Highlight;
+                gridSelectionForeColor = SystemColors.HighlightText;
+
+                // 关闭窗口黑暗模式
+                SetWindowDarkMode(this.Handle, false);
+            }
+
+            // 应用颜色到窗体
+            this.BackColor = backColor;
+            this.ForeColor = foreColor;
+
+            // 应用颜色到按钮
+            btnClose.BackColor = buttonBackColor;
+            btnClose.ForeColor = foreColor;
+            btnSave.BackColor = buttonBackColor;
+            btnSave.ForeColor = foreColor;
+
+            // 应用颜色到DataGridView
+            dataGridViewLogs.BackgroundColor = gridBackColor;
+            dataGridViewLogs.ForeColor = gridForeColor;
+            dataGridViewLogs.DefaultCellStyle.BackColor = gridBackColor;
+            dataGridViewLogs.DefaultCellStyle.ForeColor = gridForeColor;
+            dataGridViewLogs.DefaultCellStyle.SelectionBackColor = gridSelectionBackColor;
+            dataGridViewLogs.DefaultCellStyle.SelectionForeColor = gridSelectionForeColor;
+            dataGridViewLogs.ColumnHeadersDefaultCellStyle.BackColor = gridHeaderBackColor;
+            dataGridViewLogs.ColumnHeadersDefaultCellStyle.ForeColor = foreColor;
+            dataGridViewLogs.EnableHeadersVisualStyles = false;
         }
 
         /// <summary>
@@ -165,10 +224,55 @@ namespace WorkCountdown
             this.Controls.Add(dataGridViewLogs);
             this.Name = "LogForm";
             this.Text = "打卡日志记录";
+            this.FormBorderStyle = FormBorderStyle.FixedDialog; // 固定大小
+            this.MaximizeBox = false; // 禁用最大化
 
             ((System.ComponentModel.ISupportInitialize)(dataGridViewLogs)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
+        }
+
+        /// <summary>
+        /// 加载日志数据到DataGridView并计算工作时长
+        /// </summary>
+        private void LoadLogData()
+        {
+            dataGridViewLogs.Rows.Clear();
+
+            // 按日期降序排序（最新的记录在前面）
+            logs.Sort((x, y) => DateTime.Compare(DateTime.Parse(y.Date), DateTime.Parse(x.Date)));
+
+            foreach (var record in logs)
+            {
+                string workDuration = "未记录完整";
+
+                // 只有同时有上班和下班时间时才计算工作时长
+                if (!string.IsNullOrEmpty(record.StartTime) && !string.IsNullOrEmpty(record.OffworkTime))
+                {
+                    if (DateTime.TryParse(record.StartTime, out DateTime start) &&
+                        DateTime.TryParse(record.OffworkTime, out DateTime end))
+                    {
+                        TimeSpan duration = end - start;
+
+                        // 扣除1小时午休时间（如果总时长超过1小时）
+                        if (duration.TotalHours > 1)
+                        {
+                            duration = duration - TimeSpan.FromHours(1);
+                        }
+
+                        // 格式化为 HH:mm:ss 显示
+                        workDuration = $"{duration.Hours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+                    }
+                }
+
+                // 添加行到DataGridView
+                dataGridViewLogs.Rows.Add(
+                    record.Date,
+                    record.StartTime,
+                    record.OffworkTime,
+                    workDuration
+                );
+            }
         }
 
         /// <summary>
@@ -266,11 +370,11 @@ namespace WorkCountdown
                 // 将修改后的日志序列化并写入文件
                 string json = JsonSerializer.Serialize(logs, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(logFilePath, json);
-                MessageBox.Show("日志修改已成功保存到文件", "保存成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "日志修改已成功保存到文件", "保存成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, $"保存失败：{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -280,6 +384,15 @@ namespace WorkCountdown
         private void btnClose_Click(object sender, EventArgs e)
         {
             this.Close();
+        }
+
+        /// <summary>
+        /// 窗体加载事件 - 确保主题正确应用
+        /// </summary>
+        private void LogForm_Load(object sender, EventArgs e)
+        {
+            // 确保主题正确应用
+            ApplyTheme();
         }
     }
 }

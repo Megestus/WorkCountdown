@@ -4,12 +4,42 @@ using System.IO;
 using System.Windows.Forms;
 using System.Text.Json;
 using System.Reflection;
+using System.Drawing;
+using System.Runtime.InteropServices;
+
 
 namespace WorkCountdown
 {
     public partial class Form1 : Form
     {
+
+        // Windows API 常量和方法
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        /// <summary>
+        /// 设置窗口黑暗模式
+        /// </summary>
+        private void SetWindowDarkMode(IntPtr handle, bool darkMode)
+        {
+            try
+            {
+                int darkModeValue = darkMode ? 1 : 0;
+                DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkModeValue, sizeof(int));
+            }
+            catch
+            {
+                // 如果 API 调用失败，忽略错误（可能是不支持的操作系统版本）
+            }
+        }
+
+
+
         private const string SAVE_FILE = "start_time_log.json";
+        private const string SETTINGS_FILE = "app_settings.json";
         private const int WORK_HOURS = 8;
         private System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private System.Windows.Forms.Timer dailyResetTimer = new System.Windows.Forms.Timer();
@@ -19,21 +49,38 @@ namespace WorkCountdown
         private string currentDate;
 
         // ========== 暂停功能相关变量 ==========
-        private bool isPaused = false;                    // 暂停状态标志
-        private DateTime pauseStartTime;                  // 暂停开始时间
-        private TimeSpan totalPausedTime = TimeSpan.Zero; // 累计暂停时间
-        private Button btnPause = new Button();           // 暂停按钮
+        private bool isPaused = false;
+        private DateTime pauseStartTime;
+        private TimeSpan totalPausedTime = TimeSpan.Zero;
+        private Button btnPause = new Button();
+
+        // ========== 黑夜模式相关变量 ==========
+        private bool isDarkMode = false;
+        private Button btnToggleTheme = new Button();
+        private bool isProcessingClockOff = false;
+        private bool isLogFormOpen = false;
+
+        // 浅色模式 - 使用系统颜色
+        private readonly Color LightBackColor = SystemColors.Window;
+        private readonly Color LightForeColor = SystemColors.WindowText;
+        private readonly Color LightButtonBackColor = SystemColors.Control;
+
+        // 深色模式 - 使用 Windows 深色主题颜色
+        private readonly Color DarkBackColor = Color.FromArgb(32, 32, 32);
+        private readonly Color DarkForeColor = Color.FromArgb(255, 255, 255);
+        private readonly Color DarkButtonBackColor = Color.FromArgb(51, 51, 51);
 
         public Form1()
         {
             InitializeComponent();
 
+            // 加载设置
+            LoadSettings();
+
             // 设置窗口初始大小
-            this.Size = new Size(280, 350);
-            // 设置最小大小和最大大小相同
-            this.MinimumSize = new Size(280, 350);
+            this.Size = new Size(300, 400);
+            this.MinimumSize = new Size(300, 400);
             this.MaximizeBox = false;
-            this.MinimizeBox = false; // 可选，是否禁用最小化按钮
 
             InitializeTimer();
             InitializeDailyResetTimer();
@@ -42,6 +89,11 @@ namespace WorkCountdown
 
             // 调整所有按钮布局为垂直排列
             ArrangeButtonsVertically();
+
+            // 确保窗口句柄已创建后再应用主题
+            this.HandleCreated += (s, e) => {
+                ApplyTheme();
+            };
 
             currentDate = GetLogicalDate(DateTime.Now);
             CheckAndResetForNewDay();
@@ -52,41 +104,158 @@ namespace WorkCountdown
         }
 
         /// <summary>
+        /// 加载应用设置
+        /// </summary>
+        private void LoadSettings()
+        {
+            if (!File.Exists(SETTINGS_FILE))
+                return;
+
+            try
+            {
+                string json = File.ReadAllText(SETTINGS_FILE);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                if (settings != null)
+                {
+                    isDarkMode = settings.IsDarkMode;
+                }
+            }
+            catch
+            {
+                // 如果加载失败，使用默认设置
+                isDarkMode = false;
+            }
+        }
+
+        /// <summary>
+        /// 保存应用设置
+        /// </summary>
+        private void SaveSettings()
+        {
+            try
+            {
+                var settings = new AppSettings { IsDarkMode = isDarkMode };
+                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(SETTINGS_FILE, json);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 应用主题
+        /// </summary>
+        private void ApplyTheme()
+        {
+            Color backColor, foreColor, buttonBackColor;
+
+            if (isDarkMode)
+            {
+                backColor = DarkBackColor;
+                foreColor = DarkForeColor;
+                buttonBackColor = DarkButtonBackColor;
+                btnToggleTheme.Text = "☀️ 白天模式";
+
+                // 设置窗口黑暗模式
+                SetWindowDarkMode(this.Handle, true);
+            }
+            else
+            {
+                backColor = LightBackColor;
+                foreColor = LightForeColor;
+                buttonBackColor = LightButtonBackColor;
+                btnToggleTheme.Text = "🌙 黑夜模式";
+
+                // 关闭窗口黑暗模式
+                SetWindowDarkMode(this.Handle, false);
+            }
+
+            // 应用颜色到窗体
+            this.BackColor = backColor;
+            this.ForeColor = foreColor;
+
+            // 应用颜色到所有控件
+            ApplyColorToControl(this, backColor, foreColor, buttonBackColor);
+        }
+
+        /// <summary>
+        /// 递归应用颜色到控件及其子控件
+        /// </summary>
+        private void ApplyColorToControl(Control control, Color backColor, Color foreColor, Color buttonBackColor)
+        {
+            foreach (Control ctrl in control.Controls)
+            {
+                // 设置控件颜色
+                if (ctrl is Button || ctrl is Panel)
+                {
+                    ctrl.BackColor = buttonBackColor;
+                    ctrl.ForeColor = foreColor;
+                }
+                else if (ctrl is Label || ctrl is TextBox)
+                {
+                    ctrl.BackColor = backColor;
+                    ctrl.ForeColor = foreColor;
+                }
+
+                // 递归设置子控件
+                if (ctrl.HasChildren)
+                {
+                    ApplyColorToControl(ctrl, backColor, foreColor, buttonBackColor);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 切换主题按钮点击事件
+        /// </summary>
+        private void btnToggleTheme_Click(object sender, EventArgs e)
+        {
+            isDarkMode = !isDarkMode;
+            ApplyTheme();
+            SaveSettings();
+        }
+
+        /// <summary>
         /// 将所有按钮垂直排列
         /// </summary>
         private void ArrangeButtonsVertically()
         {
             int buttonWidth = 200;
             int buttonHeight = 30;
-            int startY = 150; // 起始Y坐标
-            int spacing = 10; // 按钮间距
+            int startY = 150;
+            int spacing = 10;
 
             // 调整"新的牛马一天"按钮
-            btnNewDay.Location = new System.Drawing.Point(35, startY);
+            btnNewDay.Location = new System.Drawing.Point(50, startY);
             btnNewDay.Size = new System.Drawing.Size(buttonWidth, buttonHeight);
-            // 确保事件绑定正确
+            btnNewDay.Click -= btnNewDay_Click;
             btnNewDay.Click += btnNewDay_Click;
 
             // 初始化并调整暂停按钮
             InitializePauseButton();
-            btnPause.Location = new System.Drawing.Point(35, startY + buttonHeight + spacing);
+            btnPause.Location = new System.Drawing.Point(50, startY + buttonHeight + spacing);
             btnPause.Size = new System.Drawing.Size(buttonWidth, buttonHeight);
 
             // 调整"下班打卡"按钮
-            btnClockOff.Location = new System.Drawing.Point(35, startY + (buttonHeight + spacing) * 2);
+            btnClockOff.Location = new System.Drawing.Point(50, startY + (buttonHeight + spacing) * 2);
             btnClockOff.Size = new System.Drawing.Size(buttonWidth, buttonHeight);
-            // 确保事件只绑定一次
-            btnClockOff.Click -= btnClockOff_Click; // 先移除可能存在的绑定
+            btnClockOff.Click -= btnClockOff_Click;
             btnClockOff.Click += btnClockOff_Click;
 
             // 调整"查看日志"按钮
-            btnViewLogs.Location = new System.Drawing.Point(35, startY + (buttonHeight + spacing) * 3);
+            btnViewLogs.Location = new System.Drawing.Point(50, startY + (buttonHeight + spacing) * 3);
             btnViewLogs.Size = new System.Drawing.Size(buttonWidth, buttonHeight);
-            // 确保事件绑定正确
+            btnViewLogs.Click -= btnViewLogs_Click;
             btnViewLogs.Click += btnViewLogs_Click;
 
+            // 添加主题切换按钮
+            btnToggleTheme.Location = new System.Drawing.Point(50, startY + (buttonHeight + spacing) * 4);
+            btnToggleTheme.Size = new System.Drawing.Size(buttonWidth, buttonHeight);
+            btnToggleTheme.UseVisualStyleBackColor = true;
+            btnToggleTheme.Click += btnToggleTheme_Click;
+            this.Controls.Add(btnToggleTheme);
+
             // 调整窗体大小以适应新布局
-            this.Height = Math.Max(this.Height, startY + (buttonHeight + spacing) * 4 + 50);
+            this.Height = Math.Max(this.Height, startY + (buttonHeight + spacing) * 5 + 50);
         }
 
         /// <summary>
@@ -98,8 +267,6 @@ namespace WorkCountdown
             btnPause.Text = "暂停计时";
             btnPause.UseVisualStyleBackColor = true;
             btnPause.Click += btnPause_Click;
-
-            // 将暂停按钮添加到窗体
             this.Controls.Add(btnPause);
         }
 
@@ -116,27 +283,21 @@ namespace WorkCountdown
 
             if (!isPaused)
             {
-                // 进入暂停状态
                 isPaused = true;
                 pauseStartTime = DateTime.Now;
                 btnPause.Text = "继续计时";
                 lblCountdown.Text = "计时已暂停 ⏸️";
-
-                //trayIcon.ShowBalloonTip(1500, "工作倒计时", "计时已暂停", ToolTipIcon.Info);
             }
             else
             {
-                // 结束暂停状态
                 isPaused = false;
                 totalPausedTime += DateTime.Now - pauseStartTime;
                 btnPause.Text = "暂停计时";
-
-                //trayIcon.ShowBalloonTip(1500, "工作倒计时", "计时已恢复", ToolTipIcon.Info);
             }
         }
 
         /// <summary>
-        /// 重置暂停状态（在新的一天或计时结束时调用）
+        /// 重置暂停状态
         /// </summary>
         private void ResetPauseState()
         {
@@ -146,22 +307,18 @@ namespace WorkCountdown
         }
 
         /// <summary>
-        /// 修改后的计时器Tick事件 - 增加暂停处理逻辑
+        /// 计时器Tick事件
         /// </summary>
         private void Timer_Tick(object sender, EventArgs e)
         {
-            // 每次计时检查是否需要重置
             CheckAndResetForNewDay();
 
-            // 如果处于暂停状态，不更新倒计时
             if (isPaused)
             {
                 return;
             }
 
             DateTime now = DateTime.Now;
-
-            // 计算午休时间
             DateTime lunchStart = now.Date.AddHours(12);
             DateTime lunchEnd = now.Date.AddHours(13);
 
@@ -176,7 +333,6 @@ namespace WorkCountdown
                 }
             }
 
-            // 计算实际工作时间（扣除午休和累计暂停时间）
             TimeSpan elapsed = now - startTime - lunchTimePassed - totalPausedTime;
             TimeSpan totalWork = TimeSpan.FromHours(WORK_HOURS);
             TimeSpan remaining = totalWork - elapsed;
@@ -191,7 +347,6 @@ namespace WorkCountdown
                 {
                     lblCountdown.Text = "下班时间到啦！🎉";
                     timer.Stop();
-                    // 重置暂停状态
                     ResetPauseState();
                     trayIcon.ShowBalloonTip(2000, "工作倒计时", "下班时间到啦！🎉", ToolTipIcon.Info);
                     return;
@@ -202,28 +357,19 @@ namespace WorkCountdown
         }
 
         /// <summary>
-        /// 修改"新的牛马一天"按钮事件 - 重置暂停状态
+        /// "新的牛马一天"按钮事件
         /// </summary>
         private void btnNewDay_Click(object sender, EventArgs e)
         {
-            // 重置暂停状态
             ResetPauseState();
-
-            // 加载或初始化开始时间
             LoadOrInitStartTime();
-
-            // 启动计时器
             timer.Start();
-
-            // 更新界面显示
             UpdateLabels();
-
-            // 显示开始消息
             trayIcon.ShowBalloonTip(3000, "工作倒计时", "新的牛马一天开始了！", ToolTipIcon.Info);
         }
 
         /// <summary>
-        /// 修改跨天重置方法 - 重置暂停状态
+        /// 跨天重置方法
         /// </summary>
         private void CheckAndResetForNewDay()
         {
@@ -233,7 +379,7 @@ namespace WorkCountdown
             {
                 currentDate = todayStr;
                 timer.Stop();
-                ResetPauseState(); // 重置暂停状态
+                ResetPauseState();
 
                 lblStartTime.Text = "新的一天开始了，请点击「新的牛马一天」开始工作计时";
                 lblOffworkTime.Text = "预计下班时间: 未开始";
@@ -358,32 +504,30 @@ namespace WorkCountdown
             }
         }
 
-        private bool isLogFormOpen = false;
-
         private void OpenLogForm(object sender, EventArgs e)
         {
-            // 防止重复打开
             if (isLogFormOpen)
                 return;
 
             try
             {
                 isLogFormOpen = true;
+                this.Enabled = false;
 
                 List<WorkRecord> logs = LoadLogs();
-                LogForm logForm = new LogForm(logs, SAVE_FILE);
+                LogForm logForm = new LogForm(logs, SAVE_FILE, isDarkMode);
 
-                // 设置表单关闭事件
                 logForm.FormClosed += (s, args) => {
                     isLogFormOpen = false;
+                    this.Enabled = true;
                 };
 
-                // 使用 Show 而不是 ShowDialog，并将主窗体作为所有者
                 logForm.Show(this);
             }
             catch (Exception ex)
             {
                 isLogFormOpen = false;
+                this.Enabled = true;
                 MessageBox.Show($"打开日志窗口时出错: {ex.Message}");
             }
         }
@@ -412,7 +556,7 @@ namespace WorkCountdown
                 SaveLogs(logs);
             }
 
-            offworkTime = startTime.AddHours(WORK_HOURS + 1); // +1 小时午休时间
+            offworkTime = startTime.AddHours(WORK_HOURS + 1);
         }
 
         private void UpdateLabels()
@@ -448,11 +592,8 @@ namespace WorkCountdown
             catch { }
         }
 
-        private bool isProcessingClockOff = false;
-
         private void btnClockOff_Click(object sender, EventArgs e)
         {
-            // 防止重复处理
             if (isProcessingClockOff) return;
 
             try
@@ -480,13 +621,11 @@ namespace WorkCountdown
                 }
 
                 SaveLogs(logs);
-
-                // 使用更简洁的消息框
                 MessageBox.Show(this, $"下班时间已记录:\n{now:yyyy-MM-dd HH:mm:ss}", "下班打卡",
                                MessageBoxButtons.OK, MessageBoxIcon.Information);
-
                 timer.Stop();
-                ResetPauseState(); // 重置暂停状态
+                ResetPauseState();
+                lblCountdown.Text = "已打卡下班";
             }
             finally
             {
@@ -532,5 +671,10 @@ namespace WorkCountdown
         public string Date { get; set; } = "";
         public string StartTime { get; set; } = "";
         public string OffworkTime { get; set; } = "";
+    }
+
+    public class AppSettings
+    {
+        public bool IsDarkMode { get; set; } = false;
     }
 }
